@@ -133,7 +133,7 @@ def generate_topic_content(gemini_api_key, recent_topics):
     genai.configure(api_key=gemini_api_key)
     
     # We use gemini-1.5-pro for reasoning-heavy educational synthesis
-    model = genai.GenerativeModel("gemini-1.5-pro-latest")
+    model = genai.GenerativeModel("gemini-2.5-pro")
     
     recent_topics_str = "\n".join([f"- {t}" for t in recent_topics]) if recent_topics else "(None)"
     
