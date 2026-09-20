@@ -264,7 +264,7 @@ def convert_script_to_speech(gcp_creds_json, script):
 
 def push_to_notion(notion_token, database_id, topic, summary, script, col_topic, col_summary, col_script):
     """Pushes the new topic, summary, and script back to Notion as a new row."""
-    url = "[https://api.notion.com/v1/pages](https://api.notion.com/v1/pages)"
+    url = "https://api.notion.com/v1/pages"
     headers = {
         "Authorization": f"Bearer {notion_token}",
         "Notion-Version": "2022-06-28",
