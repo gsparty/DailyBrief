@@ -174,45 +174,67 @@ def generate_topic_content(gemini_api_key, recent_topics):
 
 def convert_script_to_speech(gcp_creds_json, script):
     """
-    Calls Google Cloud Text-to-Speech (TTS) API to convert the script
-    into an MP3 file at custom speaking speed.
+    Calls Google Cloud Text-to-Speech API, automatically chunking long text
+    to bypass the 5,000 character limit, and synthesizes at 1.7x speed.
     """
     logging.info("Connecting to Google Cloud Text-to-Speech API...")
     try:
         creds_info = json.loads(gcp_creds_json)
     except json.JSONDecodeError as e:
-        raise ValueError("GCP_TTS_CREDENTIALS must be a valid JSON string representing the service account key.") from e
+        raise ValueError("GCP_TTS_CREDENTIALS must be a valid JSON string.") from e
         
     credentials = service_account.Credentials.from_service_account_info(creds_info)
     client = texttospeech.TextToSpeechClient(credentials=credentials)
-    
-    safe_script = script.replace('&', 'and').replace('<', '').replace('>', '')
-    script_with_pauses = safe_script.replace('\n', '<break time="1.5s"/>\n')
-    ssml_formatted = f"<speak>{script_with_pauses}</speak>"
-    synthesis_input = texttospeech.SynthesisInput(ssml=ssml_formatted)
-    
-    voice_name = os.environ.get("GCP_TTS_VOICE_NAME", "en-US-Neural2-F")
     
     voice = texttospeech.VoiceSelectionParams(
         language_code="en-US",
         name="en-US-Journey-F"
     )
-
     audio_config = texttospeech.AudioConfig(
         audio_encoding=texttospeech.AudioEncoding.MP3,
         speaking_rate=1.7
     )
     
-    logging.info(f"Synthesizing speech with voice '{voice_name}' at 1.7x speed...")
-    response = client.synthesize_speech(
-        input=synthesis_input, voice=voice, audio_config=audio_config
-    )
+    # 1. Sanitize XML-breaking characters
+    safe_script = script.replace('&', 'and').replace('<', '').replace('>', '')
     
+    # 2. Split script into paragraphs to avoid cutting mid-sentence
+    paragraphs = safe_script.split('\n')
+    combined_audio = b""
+    current_chunk = ""
+    
+    # 3. Chunk text to stay safely under Google's 5,000 character limit
+    for p in paragraphs:
+        p = p.strip()
+        if not p:
+            continue
+            
+        # Cap chunks at 4,000 characters
+        if len(current_chunk) + len(p) > 4000:
+            ssml = f"<speak>{current_chunk}</speak>"
+            synthesis_input = texttospeech.SynthesisInput(ssml=ssml)
+            response = client.synthesize_speech(
+                input=synthesis_input, voice=voice, audio_config=audio_config
+            )
+            combined_audio += response.audio_content
+            current_chunk = f"{p}<break time=\"1.5s\"/>\n"
+        else:
+            current_chunk += f"{p}<break time=\"1.5s\"/>\n"
+            
+    # 4. Synthesize the final remaining chunk
+    if current_chunk:
+        ssml = f"<speak>{current_chunk}</speak>"
+        synthesis_input = texttospeech.SynthesisInput(ssml=ssml)
+        response = client.synthesize_speech(
+            input=synthesis_input, voice=voice, audio_config=audio_config
+        )
+        combined_audio += response.audio_content
+        
     output_filename = "briefing.mp3"
     with open(output_filename, "wb") as out:
-        out.write(response.audio_content)
+        out.write(combined_audio)
         
-    logging.info(f"Successfully saved speech synthesis to '{output_filename}'")
+    logging.info(f"Successfully saved long-form speech synthesis to '{output_filename}'")
     return output_filename
 
 def push_to_notion(notion_token, database_id, topic, summary, script, col_topic, col_summary, col_script):
