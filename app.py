@@ -271,6 +271,11 @@ def push_to_notion(notion_token, database_id, topic, summary, script, col_topic,
         "Content-Type": "application/json"
     }
     
+    # Notion has a strict 2,000 character limit per text block. 
+    # We must chunk the 4,500+ character script into smaller pieces.
+    script_chunks = [script[i:i+2000] for i in range(0, len(script), 2000)]
+    script_rich_text = [{"text": {"content": chunk}} for chunk in script_chunks]
+    
     payload = {
         "parent": {
             "database_id": database_id
@@ -295,13 +300,7 @@ def push_to_notion(notion_token, database_id, topic, summary, script, col_topic,
                 ]
             },
             col_script: {
-                "rich_text": [
-                    {
-                        "text": {
-                            "content": script
-                        }
-                    }
-                ]
+                "rich_text": script_rich_text
             }
         }
     }
