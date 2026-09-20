@@ -188,7 +188,8 @@ def convert_script_to_speech(gcp_creds_json, script):
     credentials = service_account.Credentials.from_service_account_info(creds_info)
     client = texttospeech.TextToSpeechClient(credentials=credentials)
     
-    synthesis_input = texttospeech.SynthesisInput(text=script)
+    ssml_formatted = f"<speak>{script.replace('\n', '<break time=\"1.5s\"/>\n')}</speak>"
+    synthesis_input = texttospeech.SynthesisInput(ssml=ssml_formatted)
     
     voice_name = os.environ.get("GCP_TTS_VOICE_NAME", "en-US-Neural2-F")
     language_code = os.environ.get("GCP_TTS_LANGUAGE_CODE", "en-US")
