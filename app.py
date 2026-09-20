@@ -126,26 +126,26 @@ def get_recent_topics(notion_token, database_id):
 
 def generate_topic_content(gemini_api_key, recent_topics):
     """
-    Connects to the Gemini 1.5 Pro API and requests a new, unique, high-value
-    knowledge topic, generating both a brief summary and a 60-second read-aloud script.
+    Connects to the Gemini API and requests a new, unique, high-value
+    knowledge topic, generating both a brief summary and a read-aloud script.
     """
-    logging.info("Connecting to Gemini 1.5 Pro via Google AI Studio...")
+    logging.info("Connecting to Gemini via Google AI Studio...")
     genai.configure(api_key=gemini_api_key)
     
-    # We use gemini-1.5-pro for reasoning-heavy educational synthesis
     model = genai.GenerativeModel("gemini-3.5-flash")
     
     recent_topics_str = "\n".join([f"- {t}" for t in recent_topics]) if recent_topics else "(None)"
     
-   prompt = f"""
-You are an expert researcher and documentary scriptwriter. Generate a deep-dive script on a highly fascinating concept from psychology, economics, history, or biology.
-Do NOT output previously selected topics: {recent_topics_str}.
+    prompt = f"""
+    You are an expert researcher and documentary scriptwriter. Generate a deep-dive script on a highly fascinating concept from psychology, economics, history, or biology.
+    Do NOT output previously selected topics: {recent_topics_str}.
 
-Output exactly three lines separated by the pipe '|' character:
-[Engaging Title] | [One sentence summary] | [A 750-word script designed to be spoken aloud. Structure it heavily into two halves: First, tell a counterintuitive narrative or historical paradox that challenges common sense. Second, extract a concrete 'Mental Model' from that story that the listener can actively apply to their daily decision-making. At the very end of the script, add a new line stating "Category: Counterintuitive Narrative + Mental Model". The entire script MUST remain strictly under 4,500 characters.]
-"""
+    You MUST output a valid JSON object with exactly three keys: "topic", "summary", and "script".
+    - "topic": An engaging title.
+    - "summary": A one-sentence summary.
+    - "script": A 750-word script designed to be spoken aloud. Structure it heavily into two halves: First, tell a counterintuitive narrative or historical paradox that challenges common sense. Second, extract a concrete 'Mental Model' from that story that the listener can actively apply to their daily decision-making. At the very end of the script, add a new paragraph stating EXACTLY: "Category: Counterintuitive Narrative + Mental Model". The entire script MUST remain strictly under 4,500 characters.
+    """
     
-    # Request JSON response format
     generation_config = {
         "response_mime_type": "application/json"
     }
@@ -153,7 +153,6 @@ Output exactly three lines separated by the pipe '|' character:
     response = model.generate_content(prompt, generation_config=generation_config)
     response_text = response.text.strip()
     
-    # Safe regex-based cleaning for markdown code block wrappers
     if response_text.startswith("```"):
         response_text = re.sub(r"^```(?:json)?\n", "", response_text, flags=re.IGNORECASE)
         response_text = re.sub(r"\n```$", "", response_text)
@@ -165,7 +164,6 @@ Output exactly three lines separated by the pipe '|' character:
         logging.error(f"Failed to parse Gemini response as JSON. Raw response:\n{response.text}")
         raise e
         
-    # Ensure correct keys exist in response
     required_keys = ["topic", "summary", "script"]
     for key in required_keys:
         if key not in content_json:
@@ -173,7 +171,7 @@ Output exactly three lines separated by the pipe '|' character:
             
     logging.info(f"Gemini selected Topic: '{content_json['topic']}'")
     return content_json
-
+    
 def convert_script_to_speech(gcp_creds_json, script):
     """
     Calls Google Cloud Text-to-Speech (TTS) API to convert the 60-second script
