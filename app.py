@@ -186,6 +186,7 @@ def convert_script_to_speech(gcp_creds_json, script):
     credentials = service_account.Credentials.from_service_account_info(creds_info)
     client = texttospeech.TextToSpeechClient(credentials=credentials)
     
+    # Force Neural2 voice to ensure SSML and 1.7x speed compatibility
     voice = texttospeech.VoiceSelectionParams(
         language_code="en-US",
         name="en-US-Neural2-F"
@@ -195,28 +196,53 @@ def convert_script_to_speech(gcp_creds_json, script):
         speaking_rate=1.7
     )
     
-    # 1. Sanitize XML-breaking characters
-    safe_script = script.replace('&', 'and').replace('<', '').replace('>', '')
+    # 1. Deep sanitization for XML/SSML rules
+    safe_script = script.replace('&', 'and').replace('<', '').replace('>', '').replace('"', "'")
     
-    # 2. Split script into paragraphs to avoid cutting mid-sentence
+    # 2. Split script into paragraphs
     paragraphs = safe_script.split('\n')
     combined_audio = b""
     current_chunk = ""
     
-    # 3. Chunk text to stay safely under Google's 5,000 character limit
+    # 3. Robust chunking (prevents empty SSML payloads and stays under limits)
     for p in paragraphs:
         p = p.strip()
         if not p:
             continue
             
-        # Cap chunks at 4,000 characters
-        if len(current_chunk) + len(p) > 4000:
-            ssml = f"<speak>{current_chunk}</speak>"
-            synthesis_input = texttospeech.SynthesisInput(ssml=ssml)
+        # If a single massive paragraph exceeds limits, split it forcefully at a sentence
+        while len(p) > 3500:
+            split_idx = p.rfind('. ', 0, 3500)
+            split_idx = 3500 if split_idx == -1 else split_idx + 1
+            
+            part = p[:split_idx]
+            p = p[split_idx:].strip()
+            
+            if current_chunk:
+                ssml = f"<speak>{current_chunk}</speak>"
+                response = client.synthesize_speech(
+                    input=texttospeech.SynthesisInput(ssml=ssml), voice=voice, audio_config=audio_config
+                )
+                combined_audio += response.audio_content
+                current_chunk = ""
+                
+            ssml = f"<speak>{part}</speak>"
             response = client.synthesize_speech(
-                input=synthesis_input, voice=voice, audio_config=audio_config
+                input=texttospeech.SynthesisInput(ssml=ssml), voice=voice, audio_config=audio_config
             )
             combined_audio += response.audio_content
+
+        if not p:
+            continue
+
+        # Safely build the next chunk
+        if len(current_chunk) + len(p) > 3500:
+            if current_chunk:
+                ssml = f"<speak>{current_chunk}</speak>"
+                response = client.synthesize_speech(
+                    input=texttospeech.SynthesisInput(ssml=ssml), voice=voice, audio_config=audio_config
+                )
+                combined_audio += response.audio_content
             current_chunk = f"{p}<break time=\"1.5s\"/>\n"
         else:
             current_chunk += f"{p}<break time=\"1.5s\"/>\n"
@@ -224,9 +250,8 @@ def convert_script_to_speech(gcp_creds_json, script):
     # 4. Synthesize the final remaining chunk
     if current_chunk:
         ssml = f"<speak>{current_chunk}</speak>"
-        synthesis_input = texttospeech.SynthesisInput(ssml=ssml)
         response = client.synthesize_speech(
-            input=synthesis_input, voice=voice, audio_config=audio_config
+            input=texttospeech.SynthesisInput(ssml=ssml), voice=voice, audio_config=audio_config
         )
         combined_audio += response.audio_content
         
