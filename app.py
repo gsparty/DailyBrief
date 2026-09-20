@@ -137,19 +137,12 @@ def generate_topic_content(gemini_api_key, recent_topics):
     
     recent_topics_str = "\n".join([f"- {t}" for t in recent_topics]) if recent_topics else "(None)"
     
-    prompt = f"""
-You are an expert educational content creator and curator.
-Your task is to select a new, high-value, educational, and intellectually broadening topic that is NOT in the following list of recently covered topics:
-{recent_topics_str}
+   prompt = f"""
+You are an expert researcher and documentary scriptwriter. Generate a deep-dive script on a highly fascinating concept from psychology, economics, history, or biology.
+Do NOT output previously selected topics: {recent_topics_str}.
 
-The topic should be fascinating, educational, and suitable for a 60-second daily briefing (e.g., science, history, philosophy, technology, literature, art, economics, psychology, etc.).
-
-You must output a JSON object with the following three keys:
-1. "topic": The title of the new topic (keep it concise, e.g., "The Fermi Paradox", "Neuroplasticity", "The Library of Alexandria").
-2. "summary": A brief educational summary of the topic (around 3-4 sentences, clear and informative).
-3. "script": A 60-second read-aloud script explaining the topic. This script will be converted to speech. It should be written in an engaging, narrative, and spoken tone. It must be readable in approximately 60 seconds (around 130-150 words). Do not include any stage directions, sound effect cues, or formatting like markdown asterisks. Just pure readable text.
-
-Output EXACTLY a JSON object with these keys. No other text or explanations.
+Output exactly three lines separated by the pipe '|' character:
+[Engaging Title] | [One sentence summary] | [A 750-word script designed to be spoken aloud. Structure it heavily into two halves: First, tell a counterintuitive narrative or historical paradox that challenges common sense. Second, extract a concrete 'Mental Model' from that story that the listener can actively apply to their daily decision-making. At the very end of the script, add a new line stating "Category: Counterintuitive Narrative + Mental Model". The entire script MUST remain strictly under 4,500 characters.]
 """
     
     # Request JSON response format
