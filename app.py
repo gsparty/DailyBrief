@@ -188,7 +188,7 @@ def convert_script_to_speech(gcp_creds_json, script):
     
     voice = texttospeech.VoiceSelectionParams(
         language_code="en-US",
-        name="en-US-Journey-F"
+        name="en-US-Neural2-F"
     )
     audio_config = texttospeech.AudioConfig(
         audio_encoding=texttospeech.AudioEncoding.MP3,
