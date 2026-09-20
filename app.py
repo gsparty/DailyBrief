@@ -186,7 +186,8 @@ def convert_script_to_speech(gcp_creds_json, script):
     credentials = service_account.Credentials.from_service_account_info(creds_info)
     client = texttospeech.TextToSpeechClient(credentials=credentials)
     
-    script_with_pauses = script.replace('\n', '<break time="1.5s"/>\n')
+    safe_script = script.replace('&', 'and').replace('<', '').replace('>', '')
+    script_with_pauses = safe_script.replace('\n', '<break time="1.5s"/>\n')
     ssml_formatted = f"<speak>{script_with_pauses}</speak>"
     synthesis_input = texttospeech.SynthesisInput(ssml=ssml_formatted)
     
