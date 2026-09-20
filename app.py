@@ -201,14 +201,13 @@ def convert_script_to_speech(gcp_creds_json, script):
     language_code = os.environ.get("GCP_TTS_LANGUAGE_CODE", "en-US")
     
     voice = texttospeech.VoiceSelectionParams(
-        language_code=language_code,
-        name=voice_name
+        language_code="en-US",
+        name="en-US-Journey-F"
     )
-    
-    # Speaking rate set to 1.7x speed
+
     audio_config = texttospeech.AudioConfig(
         audio_encoding=texttospeech.AudioEncoding.MP3,
-        speaking_rate=1.7
+        speaking_rate=1.2
     )
     
     logging.info(f"Synthesizing speech with voice '{voice_name}' at 1.7x speed...")
