@@ -313,7 +313,7 @@ def push_to_notion(notion_token, database_id, topic, summary, script, col_topic,
 def send_to_telegram(telegram_token, chat_id, filepath, topic, summary):
     """Sends the generated MP3 file and formatted summary to the user's phone via Telegram."""
     logging.info("Sending briefing MP3 to Telegram...")
-    url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){telegram_token}/sendAudio"
+    url = f"https://api.telegram.org/bot{telegram_token}/sendAudio"
     
     caption = f"<b>💡 Daily Briefing: {topic}</b>\n\n{summary}"
     
