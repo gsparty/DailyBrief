@@ -193,7 +193,7 @@ def convert_script_to_speech(gcp_creds_json, script):
     )
     audio_config = texttospeech.AudioConfig(
         audio_encoding=texttospeech.AudioEncoding.MP3,
-        speaking_rate=1.2
+        speaking_rate=1.1
     )
     
     # 1. Deep sanitization for XML/SSML rules
