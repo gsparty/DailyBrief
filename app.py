@@ -7,7 +7,8 @@ import requests
 import feedparser
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
+from google.genai import types as genai_types
 from google.cloud import texttospeech
 from google.oauth2 import service_account
 
@@ -78,44 +79,11 @@ def auto_detect_notion_properties(notion_token, database_id, retries=4, backoff=
             f"Notion schema fetch failed after {retries} attempts. Last error: {last_exc}"
         )
 
-    db_data = response.json()
-    properties = db_data.get("properties", {})
-
-    title_col = None
-    rich_text_cols = []
-
-    for col_name, col_meta in properties.items():
-        col_type = col_meta.get("type")
-        if col_type == "title":
-            title_col = col_name
-        elif col_type == "rich_text":
-            rich_text_cols.append(col_name)
-
-    env_topic   = os.environ.get("NOTION_COLUMN_TOPIC")
-    env_summary = os.environ.get("NOTION_COLUMN_SUMMARY")
-    env_script  = os.environ.get("NOTION_COLUMN_SCRIPT")
-
-    final_topic = env_topic or title_col or "Topic"
-
-    detected_summary = None
-    detected_script  = None
-    for col in rich_text_cols:
-        col_lower = col.lower()
-        if "summary" in col_lower or "desc" in col_lower or "info" in col_lower:
-            detected_summary = col
-        elif "script" in col_lower or "read" in col_lower or "text" in col_lower:
-            detected_script = col
-
-    if not detected_summary and rich_text_cols:
-        detected_summary = rich_text_cols[0]
-    if not detected_script:
-        detected_script = rich_text_cols[1] if len(rich_text_cols) > 1 else rich_text_cols[0] if rich_text_cols else None
-
-    final_summary = env_summary or detected_summary or "Summary"
-    final_script  = env_script  or detected_script  or "Script"
-
-    logging.info(f"Mapped columns -> Title: '{final_topic}', Summary: '{final_summary}', Script: '{final_script}'")
-    return final_topic, final_summary, final_script
+    # Schema is now stable and known — hardcode instead of fragile auto-detection.
+    # Columns: Topic (title), Summary (text), Script (text),
+    #          News Headlines (text), News Script (text)
+    logging.info("Mapped columns -> Title: 'Topic', Summary: 'Summary', Script: 'Script'")
+    return "Topic", "Summary", "Script"
 
 # ---------------------------------------------------------------------------
 # Notion — recent topics
@@ -299,6 +267,32 @@ def fetch_top_news(n=3):
         used_titles.add(ea["title"])
 
     logging.info(f"Selected {len(chosen)} stories after overlap scoring.")
+
+    # Fallback: if fewer than n stories found (e.g. only 1 RSS source available),
+    # fill remaining slots from whichever source had the most entries.
+    if len(chosen) < n and by_source:
+        logging.warning(
+            f"Only {len(chosen)} overlap stories found — filling from best single source."
+        )
+        best_src = max(by_source, key=lambda s: len(by_source[s]))
+        for entry in by_source[best_src]:
+            if len(chosen) >= n:
+                break
+            canonical = entry["title"]
+            already_used = any(
+                _overlap_score(canonical, ut) > 0.5 for ut in used_titles
+            )
+            if already_used:
+                continue
+            chosen.append({
+                "headline": canonical,
+                "snippets": [entry["summary"]] if entry["summary"] else [],
+                "sources":  [best_src],
+                "overlap":  0.0,
+            })
+            used_titles.add(canonical)
+        logging.info(f"After fallback: {len(chosen)} stories total.")
+
     return chosen
 
 
@@ -317,8 +311,7 @@ def synthesize_news_block(gemini_api_key, stories):
         return ""
 
     logging.info("Synthesizing news block via Gemini...")
-    genai.configure(api_key=gemini_api_key)
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    client = genai.Client(api_key=gemini_api_key)
 
     stories_payload = json.dumps([
         {
@@ -331,13 +324,12 @@ def synthesize_news_block(gemini_api_key, stories):
 
     prompt = f"""
 You are a neutral news anchor writing a spoken audio segment.
-You are given {len(stories)} news stories. Each story includes a headline and raw snippets from multiple news sources.
+You are given {len(stories)} news stories. Each story includes a headline and raw snippets from one or more news sources.
 
 For EACH story, write EXACTLY 2-3 sentences:
-- State only facts that appear in ALL or MOST sources
+- State only verified facts
 - Use no editorial adjectives or opinion framing
 - Do NOT attribute to any single outlet ("Reuters reported...", "BBC said..." — forbidden)
-- If sources contradict each other on a key fact, state the contradiction plainly
 - Write in present or recent-past tense, as if speaking to a listener
 
 Format your output as a single continuous spoken paragraph block.
@@ -349,7 +341,10 @@ Stories:
 {stories_payload}
 """
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=prompt,
+    )
     news_text = response.text.strip()
     logging.info(f"News block generated ({len(news_text)} chars).")
     return news_text
@@ -365,8 +360,7 @@ def generate_topic_content(gemini_api_key, recent_topics):
     Format: hook → mechanism → real example → implication → takeaway.
     """
     logging.info("Generating concept content via Gemini...")
-    genai.configure(api_key=gemini_api_key)
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    client = genai.Client(api_key=gemini_api_key)
 
     recent_topics_str = "\n".join([f"- {t}" for t in recent_topics]) if recent_topics else "(None)"
 
@@ -407,8 +401,13 @@ Forbidden: opening anecdotes, rhetorical questions stacked at the start,
 The entire script MUST be under 2,000 characters.
 """
 
-    generation_config = {"response_mime_type": "application/json"}
-    response = model.generate_content(prompt, generation_config=generation_config)
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=prompt,
+        config=genai_types.GenerateContentConfig(
+            response_mime_type="application/json",
+        ),
+    )
     response_text = response.text.strip()
 
     if response_text.startswith("```"):
