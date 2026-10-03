@@ -115,11 +115,12 @@ def get_recent_topics(notion_token, database_id):
 # ---------------------------------------------------------------------------
 
 # Three sources with known near-neutral stance.
-# AP via RSSHub public mirror — free, no auth required.
+# Sources confirmed working from GitHub Actions runners.
+# Reuters DNS-fails on GH Actions; RSSHub AP mirror 403s — both replaced.
 RSS_SOURCES = {
-    "reuters": "https://feeds.reuters.com/reuters/worldNews",
-    "bbc":     "https://feeds.bbci.co.uk/news/world/rss.xml",
-    "ap":      "https://rsshub.app/apnews/topics/apf-topnews",
+    "bbc":      "https://feeds.bbci.co.uk/news/world/rss.xml",
+    "ap":       "https://apnews.com/rss",
+    "guardian": "https://www.theguardian.com/world/rss",
 }
 
 # GitHub Actions runner has a real User-Agent; spoof it here for local dev
@@ -384,19 +385,45 @@ Stories:
 # Concept — Gemini generation (rewritten prompt)
 # ---------------------------------------------------------------------------
 
+# Ordered category list — cycles deterministically based on entry count.
+# Extend or reorder freely; rotation period = len(CONCEPT_CATEGORIES) days.
+CONCEPT_CATEGORIES = [
+    "cognitive psychology or behavioral economics (biases, heuristics, decision-making)",
+    "information theory or epistemology (how knowledge, signals, and uncertainty work)",
+    "ecology or evolutionary biology (population dynamics, adaptation, selection)",
+    "systems thinking or complexity theory (feedback loops, emergence, tipping points)",
+    "game theory or mechanism design (incentives, coordination, strategic behavior)",
+    "physics or mathematics applied to real-world phenomena (not paradoxes or named effects)",
+    "sociology or anthropology (group behavior, institutions, culture, norms)",
+    "history of science or technology (how paradigms shift, inventions propagate)",
+]
+
+
 def generate_topic_content(gemini_api_key, recent_topics):
     """
     Generates a dense, direct concept explainer. No storytelling.
     Format: hook → mechanism → real example → implication → takeaway.
+    Category rotates deterministically to prevent topic-type repetition.
     """
     logging.info("Generating concept content via Gemini...")
     client = genai.Client(api_key=gemini_api_key)
+
+    # Pick category based on how many entries exist — cycles automatically
+    category_index = len(recent_topics) % len(CONCEPT_CATEGORIES)
+    forced_category = CONCEPT_CATEGORIES[category_index]
+    logging.info(f"Concept category for this run: [{category_index}] {forced_category}")
 
     recent_topics_str = "\n".join([f"- {t}" for t in recent_topics]) if recent_topics else "(None)"
 
     prompt = f"""
 You are a dense, direct knowledge synthesizer — NOT a storyteller.
-Generate one concept from psychology, economics, systems thinking, or biology.
+Generate one concept strictly from this category: {forced_category}
+
+HARD CONSTRAINT — Do NOT generate:
+- Named paradoxes (Jevons, Peltzman, Moravec, etc.)
+- Named effects (Streisand, Dunning-Kruger, etc.)
+- "The X Paradox" or "The X Effect" title patterns
+The concept must be a mechanism, principle, or dynamic — not a named curiosity.
 
 Do NOT repeat these recent topics:
 {recent_topics_str}
