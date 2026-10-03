@@ -297,6 +297,39 @@ def fetch_top_news(n=3):
 
 
 # ---------------------------------------------------------------------------
+# Gemini — shared call wrapper with retry on 503
+# ---------------------------------------------------------------------------
+
+def _gemini_generate(client, prompt, json_mode=False, retries=5, backoff=8):
+    """
+    Call Gemini with exponential backoff on 503 (overload) errors.
+    503 is transient — Google says retry later, so we do.
+    """
+    from google.genai import errors as genai_errors
+
+    config = genai_types.GenerateContentConfig(
+        response_mime_type="application/json"
+    ) if json_mode else None
+
+    kwargs = dict(model="gemini-3.8-flash", contents=prompt)
+    if config:
+        kwargs["config"] = config
+
+    for attempt in range(1, retries + 1):
+        try:
+            return client.models.generate_content(**kwargs)
+        except genai_errors.ServerError as exc:
+            if attempt == retries:
+                raise
+            wait = backoff * attempt
+            logging.warning(
+                f"Gemini 503 overload (attempt {attempt}/{retries}). "
+                f"Retrying in {wait}s..."
+            )
+            time.sleep(wait)
+
+
+# ---------------------------------------------------------------------------
 # News — Gemini synthesis
 # ---------------------------------------------------------------------------
 
@@ -341,10 +374,7 @@ Stories:
 {stories_payload}
 """
 
-    response = client.models.generate_content(
-        model="gemini-3.8-flash",
-        contents=prompt,
-    )
+    response = _gemini_generate(client, prompt)
     news_text = response.text.strip()
     logging.info(f"News block generated ({len(news_text)} chars).")
     return news_text
@@ -401,13 +431,7 @@ Forbidden: opening anecdotes, rhetorical questions stacked at the start,
 The entire script MUST be under 2,000 characters.
 """
 
-    response = client.models.generate_content(
-        model="gemini-3.8-flash",
-        contents=prompt,
-        config=genai_types.GenerateContentConfig(
-            response_mime_type="application/json",
-        ),
-    )
+    response = _gemini_generate(client, prompt, json_mode=True)
     response_text = response.text.strip()
 
     if response_text.startswith("```"):
