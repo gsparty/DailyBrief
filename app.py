@@ -342,7 +342,7 @@ Stories:
 """
 
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-3.8-flash",
         contents=prompt,
     )
     news_text = response.text.strip()
@@ -402,7 +402,7 @@ The entire script MUST be under 2,000 characters.
 """
 
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-3.8-flash",
         contents=prompt,
         config=genai_types.GenerateContentConfig(
             response_mime_type="application/json",
